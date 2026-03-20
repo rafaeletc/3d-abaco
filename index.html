@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Editor 3D Paramétrico e Interativo</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #2c3e50; font-family: sans-serif;}
+        canvas { display: block; }
+        #painel-dicas {
+            position: absolute; top: 10px; left: 10px; color: white;
+            background: rgba(0,0,0,0.8); padding: 15px; border-radius: 8px; pointer-events: none;
+            line-height: 1.5; font-size: 14px; box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+    </style>
+    
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
+                "lil-gui": "https://unpkg.com/lil-gui@0.19.1/dist/lil-gui.esm.min.js"
+            }
+        }
+    </script>
+</head>
+<body>
+    <div id="painel-dicas">
+        <b>Interações Mágicas:</b><br>
+        🚪 <b>Porta:</b> Arraste para os lados. O buraco acompanha!<br>
+        🪞 <b>Espelho/Pia:</b> Arraste livremente (ficam colados na parede).<br>
+        🚽 <b>Vaso:</b> Arraste pelo chão da sala.<br>
+        📏 Use o menu à direita para redimensionar a sala a qualquer momento.
+    </div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { TransformControls } from 'three/addons/controls/TransformControls.js';
+        import GUI from 'lil-gui';
+
+        // 1. CONFIGURAÇÃO BÁSICA
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color('#34495e');
+
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
+        camera.position.set(0, 5, 6);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        const orbit = new OrbitControls(camera, renderer.domElement);
+        orbit.enableDamping = true;
+
+        scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+        const dirLight = new THREE.DirectionalLight(0xffffff, 1);
+        dirLight.position.set(2, 8, 5);
+        scene.add(dirLight);
+
+        // 2. MATERIAIS E GEOMETRIAS
+        const matParede = new THREE.MeshStandardMaterial({ color: '#ecf0f1' });
+        const matPiso = new THREE.MeshStandardMaterial({ color: '#bdc3c7' });
+        const matMadeira = new THREE.MeshStandardMaterial({ color: '#d35400' });
+        const matEspelho = new THREE.MeshStandardMaterial({ color: '#81ecec', metalness: 0.8, roughness: 0.1 });
+        const matLouca = new THREE.MeshStandardMaterial({ color: '#ffffff' });
+
+        const geoBase = new THREE.BoxGeometry(1, 1, 1);
+
+        // 3. CONSTRUINDO A SALA
+        const grupoSala = new THREE.Group();
+        scene.add(grupoSala);
+
+        const piso = new THREE.Mesh(geoBase, matPiso);
+        const paredeEsq = new THREE.Mesh(geoBase, matParede);
+        const paredeDir = new THREE.Mesh(geoBase, matParede);
+        const paredeFundo = new THREE.Mesh(geoBase, matParede);
+        
+        // Parede Frontal (Modular para a Porta)
+        const pFrenteEsq = new THREE.Mesh(geoBase, matParede);
+        const pFrenteDir = new THREE.Mesh(geoBase, matParede);
+        const pFrenteTopo = new THREE.Mesh(geoBase, matParede);
+
+        grupoSala.add(piso, paredeEsq, paredeDir, paredeFundo, pFrenteEsq, pFrenteDir, pFrenteTopo);
+
+        // 4. COMPONENTES INTERATIVOS (Móveis e Esquadrias)
+        const objetosInterativos =[]; // Só o que está aqui pode ser arrastado
+
+        // A PORTA
+        const porta = new THREE.Mesh(geoBase, matMadeira);
+        porta.scale.set(0.8, 2.1, 0.05); // Largura: 0.8m, Altura: 2.1m
+        // userData ajuda o código a saber o que fazer com esse objeto específico
+        porta.userData = { tipo: 'porta', largura: 0.8, altura: 2.1 }; 
+        scene.add(porta);
+        objetosInterativos.push(porta);
+
+        // O ESPELHO
+        const espelho = new THREE.Mesh(geoBase, matEspelho);
+        espelho.scale.set(1.0, 0.8, 0.02);
+        espelho.position.set(0, 1.6, 0); 
+        espelho.userData = { tipo: 'parede_fundo' }; // Trava no eixo Z da parede do fundo
+        scene.add(espelho);
+        objetosInterativos.push(espelho);
+
+        // A PIA (Bancada)
+        const pia = new THREE.Mesh(geoBase, matLouca);
+        pia.scale.set(1.0, 0.1, 0.5);
+        pia.position.set(0, 0.9, 0);
+        pia.userData = { tipo: 'parede_fundo_ancorada', profundidade: 0.5 }; // Trava no Z da parede
+        scene.add(pia);
+        objetosInterativos.push(pia);
+
+        // O VASO SANITÁRIO (Livre no chão)
+        const vaso = new THREE.Mesh(geoBase, matLouca);
+        vaso.scale.set(0.4, 0.4, 0.5);
+        vaso.position.set(-1, 0.2, 0);
+        vaso.userData = { tipo: 'chao', altura: 0.4 }; // Trava no eixo Y do chão
+        scene.add(vaso);
+        objetosInterativos.push(vaso);
+
+        // 5. PARÂMETROS GERAIS
+        const params = { largura: 4, profundidade: 3, altura: 2.8 };
+        const esp = 0.15; // Espessura da parede
+
+        // 6. MOTOR DE ATUALIZAÇÃO REALT-TIME
+        function atualizarProjeto() {
+            const w = params.largura;
+            const d = params.profundidade;
+            const h = params.altura;
+
+            // --- ATUALIZA ESTRUTURA BÁSICA ---
+            piso.scale.set(w, esp, d);
+            piso.position.set(0, -esp/2, 0);
+
+            paredeEsq.scale.set(esp, h, d);
+            paredeEsq.position.set(-w/2 - esp/2, h/2, 0);
+
+            paredeDir.scale.set(esp, h, d);
+            paredeDir.position.set(w/2 + esp/2, h/2, 0);
+
+            paredeFundo.scale.set(w + esp*2, h, esp);
+            paredeFundo.position.set(0, h/2, -d/2 - esp/2);
+
+            // --- REGRAS DE TRAVAMENTO DOS MÓVEIS ---
+            // Se o usuário arrastar a porta para cima, nós forçamos ela de volta pro chão!
+            
+            // Limita a porta para não sair da sala
+            const limitePorta = w/2 - porta.userData.largura/2;
+            if (porta.position.x < -limitePorta) porta.position.x = -limitePorta;
+            if (porta.position.x > limitePorta) porta.position.x = limitePorta;
+            
+            // Força a posição da porta no eixo Y e Z
+            porta.position.y = porta.userData.altura / 2;
+            porta.position.z = d/2; // Colada na parede da frente
+
+            // Força Espelho a ficar na parede do fundo
+            espelho.position.z = -d/2 + 0.02; // Encostado no fundo
+            
+            // Força Pia a ficar encostada na parede do fundo e na altura certa
+            pia.position.z = -d/2 + pia.userData.profundidade/2;
+            
+            // Força o Vaso a ficar apoiado no chão
+            vaso.position.y = vaso.userData.altura / 2;
+
+
+            // --- MÁGICA DO BURACO DA PORTA (Parede Modular) ---
+            const portaX = porta.position.x;
+            const metadeW = w / 2;
+            const metadePorta = porta.userData.largura / 2;
+
+            // Pedacinho de parede à esquerda da porta
+            const largEsq = (portaX - metadePorta) - (-metadeW);
+            pFrenteEsq.scale.set(largEsq, h, esp);
+            pFrenteEsq.position.set(-metadeW + largEsq/2, h/2, d/2);
+
+            // Pedacinho de parede à direita da porta
+            const largDir = metadeW - (portaX + metadePorta);
+            pFrenteDir.scale.set(largDir, h, esp);
+            pFrenteDir.position.set(metadeW - largDir/2, h/2, d/2);
+
+            // Pedacinho de parede em cima da porta
+            const altTopo = h - porta.userData.altura;
+            pFrenteTopo.scale.set(porta.userData.largura, altTopo, esp);
+            pFrenteTopo.position.set(portaX, porta.userData.altura + altTopo/2, d/2);
+        }
+
+        // Chama a função a primeira vez para montar a sala
+        atualizarProjeto();
+
+        // 7. SISTEMA DE ARRASTAR (DRAG & DROP)
+        const transformControl = new TransformControls(camera, renderer.domElement);
+        // Desliga os eixos coloridos que não precisamos para visualização mais limpa
+        transformControl.showY = true; 
+        scene.add(transformControl);
+
+        // EVENTO CRUCIAL: Enquanto o objeto é arrastado, chama a atualização!
+        transformControl.addEventListener('change', () => {
+            atualizarProjeto(); // Recalcula o buraco da porta e as restrições em tempo real
+        });
+
+        transformControl.addEventListener('dragging-changed', (event) => {
+            orbit.enabled = !event.value; // Trava a câmera giratória enquanto arrasta
+        });
+
+        // Mira do Mouse para selecionar
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+
+        window.addEventListener('pointerdown', (event) => {
+            if(event.clientX > window.innerWidth - 300 && event.clientY < 300) return; // Ignora o menu
+
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+            raycaster.setFromCamera(mouse, camera);
+
+            const intersecoes = raycaster.intersectObjects(objetosInterativos, true);
+
+            if (intersecoes.length > 0) {
+                // Se clicou num móvel/porta, anexa a ferramenta de mover
+                transformControl.attach(intersecoes[0].object);
+            } else {
+                // Se clicou na parede vazia, solta
+                transformControl.detach();
+            }
+        });
+
+        // 8. MENU LATERAL
+        const gui = new GUI({ title: 'Configurações do Cômodo' });
+        gui.add(params, 'largura', 2, 8).name('Largura').onChange(atualizarProjeto);
+        gui.add(params, 'profundidade', 2, 8).name('Profundidade').onChange(atualizarProjeto);
+        gui.add(params, 'altura', 2.2, 4).name('Pé Direito').onChange(atualizarProjeto);
+
+        // RESPONSIVIDADE
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // LOOP
+        function animar() {
+            requestAnimationFrame(animar);
+            orbit.update();
+            renderer.render(scene, camera);
+        }
+        animar();
+    </script>
+</body>
+</html>
