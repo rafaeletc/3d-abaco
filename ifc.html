@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Visualizador BIM (IFC)</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #1e1e1e; font-family: sans-serif;}
+        canvas { display: block; }
+        #loading { position: absolute; top: 50%; width: 100%; text-align: center; color: white; font-size: 20px;}
+    </style>
+    
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+</head>
+<body>
+    <div id="loading">Carregando Modelo IFC (BIM)...</div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        
+        // Importando o Carregador de IFC
+        import { IFCLoader } from 'three/addons/loaders/IFCLoader.js';
+
+        // 1. CENA BÁSICA
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color('#cbd5e1');
+
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(10, 10, 10);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        const orbit = new OrbitControls(camera, renderer.domElement);
+        orbit.enableDamping = true;
+
+        // Iluminação (Projetos IFC costumam ser grandes, precisam de boa luz)
+        scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+        const dirLight = new THREE.DirectionalLight(0xffffff, 1);
+        dirLight.position.set(10, 20, 10);
+        scene.add(dirLight);
+
+        // 2. CONFIGURANDO O CARREGADOR DE IFC
+        const ifcLoader = new IFCLoader();
+        
+        // PASSO CRUCIAL: O IFC precisa de um tradutor (WebAssembly). 
+        // Apontamos para o servidor oficial que hospeda esses tradutores:
+        ifcLoader.ifcManager.setWasmPath('https://unpkg.com/web-ifc@0.0.50/');
+
+        // 3. CARREGANDO O ARQUIVO
+        // Substitua 'meu_projeto.ifc' pelo caminho do seu arquivo real
+        ifcLoader.load(
+            'meu_projeto.ifc', 
+            function (ifcModel) {
+                // Quando terminar de carregar
+                document.getElementById('loading').style.display = 'none';
+                
+                // Adiciona o projeto IFC inteiro na cena
+                scene.add(ifcModel);
+
+                // Centraliza a câmera no modelo (opcional, mas ajuda muito)
+                // ifcModel.position.set(0,0,0);
+            },
+            function (progress) {
+                // Mostra a porcentagem de carregamento (IFCs podem ser pesados)
+                const percentual = (progress.loaded / progress.total) * 100;
+                document.getElementById('loading').innerText = `Carregando: ${Math.round(percentual)}%`;
+            },
+            function (error) {
+                console.error("Erro ao carregar o IFC:", error);
+                document.getElementById('loading').innerText = "Erro ao carregar o arquivo.";
+            }
+        );
+
+        // RESPONSIVIDADE
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // LOOP DE ANIMAÇÃO
+        function animar() {
+            requestAnimationFrame(animar);
+            orbit.update();
+            renderer.render(scene, camera);
+        }
+        animar();
+    </script>
+</body>
+</html>
