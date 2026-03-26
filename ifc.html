@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Visualizador BIM (That Open) - GitHub Pages</title>
+    <title>Visualizador BIM (That Open) - Resolvido</title>
     
-    <!-- Ícone vazio para evitar o erro do favicon -->
+    <!-- Evita o erro inofensivo mas chato do favicon.ico -->
     <link rel="icon" href="data:,">
 
     <style>
@@ -25,21 +25,21 @@
         @keyframes spin { to { transform: rotate(360deg); } }
     </style>
     
-    <!-- IMPORTMAP TURBINADO COM BUNDLE (Impede erros 404 de submódulos) e Quebrador de Cache (?v=2) -->
+    <!-- IMPORTMAP LIMPO: Sem travar versões inexistentes -->
     <script type="importmap">
         {
             "imports": {
                 "three": "https://esm.sh/three@0.160.0",
-                "@thatopen/components": "https://esm.sh/@thatopen/components@1.4.1?bundle&external=three&v=2",
-                "@thatopen/fragments": "https://esm.sh/@thatopen/fragments@1.4.1?bundle&external=three&v=2",
-                "web-ifc": "https://esm.sh/web-ifc@0.0.58?v=2"
+                "@thatopen/components": "https://esm.sh/@thatopen/components?external=three",
+                "@thatopen/fragments": "https://esm.sh/@thatopen/fragments?external=three",
+                "web-ifc": "https://esm.sh/web-ifc@0.0.70"
             }
         }
     </script>
 </head>
 <body>
     <div id="loading">
-        <span id="loading-text">1. Forçando Atualização do Motor BIM...</span>
+        <span id="loading-text">1. Iniciando Motor BIM (Carregando Módulos)...</span>
         <div class="spinner" id="spinner"></div>
     </div>
     
@@ -52,64 +52,70 @@
         const loadingText = document.getElementById('loading-text');
         const spinner = document.getElementById('spinner');
 
-        try {
-            // 1. INICIALIZA O MOTOR THAT OPEN
-            loadingText.innerText = "2. Configurando Cena 3D...";
-            const container = document.getElementById('container');
-            const components = new OBC.Components();
-            const worlds = components.get(OBC.Worlds);
-            
-            const world = worlds.create();
-            world.scene = new OBC.SimpleScene(components);
-            world.scene.setup(); 
-            world.scene.three.background = new THREE.Color('#cbd5e1');
+        // Envolvemos tudo numa função async para garantir o carregamento sequencial perfeito
+        async function iniciarAplicacao() {
+            try {
+                // 1. INICIALIZA O MOTOR THAT OPEN
+                loadingText.innerText = "2. Configurando Cena 3D...";
+                const container = document.getElementById('container');
+                const components = new OBC.Components();
+                const worlds = components.get(OBC.Worlds);
+                
+                const world = worlds.create();
+                world.scene = new OBC.SimpleScene(components);
+                world.scene.setup(); 
+                world.scene.three.background = new THREE.Color('#cbd5e1');
 
-            world.renderer = new OBC.SimpleRenderer(components, container);
-            world.camera = new OBC.SimpleCamera(components);
-            world.camera.controls.setLookAt(15, 15, 15, 0, 0, 0);
+                world.renderer = new OBC.SimpleRenderer(components, container);
+                world.camera = new OBC.SimpleCamera(components);
+                world.camera.controls.setLookAt(15, 15, 15, 0, 0, 0);
 
-            components.init();
+                components.init();
 
-            // 2. CONFIGURA O TRADUTOR DE ENGENHARIA (WASM)
-            loadingText.innerText = "3. Carregando Tradutor IFC (WASM)...";
-            const ifcLoader = components.get(OBC.IfcLoader);
-            await ifcLoader.setup(); 
-            
-            // O caminho WASM é a única coisa que puxamos do unpkg porque são arquivos binários vitais
-            ifcLoader.settings.wasm = {
-                path: "https://unpkg.com/web-ifc@0.0.58/",
-                absolute: true
-            };
+                // 2. CONFIGURA O TRADUTOR DE ENGENHARIA (WASM)
+                loadingText.innerText = "3. Carregando Tradutor IFC (WASM)...";
+                const ifcLoader = components.get(OBC.IfcLoader);
+                await ifcLoader.setup(); 
+                
+                // IMPORTANTE: A versão do unpkg (0.0.70) DEVE ser igual a que está lá em cima no importmap
+                ifcLoader.settings.wasm = {
+                    path: "https://unpkg.com/web-ifc@0.0.70/",
+                    absolute: true
+                };
 
-            // 3. LENDO O SEU ARQUIVO IFC
-            const fileName = "./meu_projeto.ifc"; // <-- CERTIFIQUE-SE DE COLOCAR O NOME EXATO AQUI
+                // 3. LENDO O SEU ARQUIVO IFC
+                const fileName = "./meu_projeto.ifc"; // <-- SEU ARQUIVO AQUI (Cuidado com Letras Maiúsculas/Minúsculas)
 
-            loadingText.innerText = `4. Baixando o arquivo ${fileName}...`;
-            
-            const response = await fetch(fileName);
-            
-            if (!response.ok) {
-                throw new Error(`Arquivo IFC não encontrado (Erro HTTP: ${response.status}). Verifique o nome do arquivo no GitHub.`);
+                loadingText.innerText = `4. Baixando o arquivo ${fileName}...`;
+                
+                const response = await fetch(fileName);
+                
+                if (!response.ok) {
+                    throw new Error(`Arquivo IFC não encontrado! Erro ${response.status}. Verifique o nome do arquivo no repositório.`);
+                }
+                
+                const data = await response.arrayBuffer();
+                const buffer = new Uint8Array(data);
+
+                loadingText.innerText = "5. Processando Geometria de Alta Performance...";
+                
+                // Converte e joga na tela
+                const model = await ifcLoader.load(buffer);
+                world.scene.three.add(model);
+
+                // Sucesso! Esconde a tela de carregamento
+                document.getElementById('loading').style.display = 'none';
+
+            } catch (error) {
+                console.error("Erro fatal capturado:", error);
+                spinner.style.display = 'none';
+                loadingText.innerText = `⚠️ Erro: ${error.message}`;
+                loadingText.style.color = "#ff4757";
             }
-            
-            const data = await response.arrayBuffer();
-            const buffer = new Uint8Array(data);
-
-            loadingText.innerText = "5. Processando Geometria de Alta Performance...";
-            
-            // Converte e joga na tela
-            const model = await ifcLoader.load(buffer);
-            world.scene.three.add(model);
-
-            // Sucesso! Esconde a tela de carregamento
-            document.getElementById('loading').style.display = 'none';
-
-        } catch (error) {
-            console.error(error);
-            spinner.style.display = 'none';
-            loadingText.innerText = `⚠️ Erro: ${error.message}`;
-            loadingText.style.color = "#ff4757";
         }
+
+        // Executa o motor
+        iniciarAplicacao();
     </script>
 </body>
 </html>
