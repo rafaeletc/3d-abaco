@@ -3,10 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Visualizador BIM Oficial (That Open)</title>
-    
+    <title>Visualizador BIM (That Open) - Versão Final</title>
     <link rel="icon" href="data:,">
-
     <style>
         body { margin: 0; overflow: hidden; background-color: #1e1e1e; font-family: sans-serif; }
         #container { width: 100vw; height: 100vh; display: block; }
@@ -24,27 +22,22 @@
         @keyframes spin { to { transform: rotate(360deg); } }
     </style>
     
-    <!-- 
-      IMPORT MAP OFICIAL:
-      Sem "mágicas" de compilação. Apontando para os arquivos puros e definitivos.
-      Isso elimina a duplicação de classes e os bugs de "Fragments first".
-    -->
     <script type="importmap">
         {
             "imports": {
-                "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-                "web-ifc": "https://cdn.jsdelivr.net/npm/web-ifc@0.0.58/web-ifc-api.js",
-                "@thatopen/components": "https://cdn.jsdelivr.net/npm/@thatopen/components@1.4.1/dist/index.js"
+                "three": "https://esm.sh/three@0.160.1",
+                "web-ifc": "https://esm.sh/web-ifc@0.0.66",
+                "@thatopen/components": "https://esm.sh/@thatopen/components@2.1.0",
+                "@thatopen/fragments": "https://esm.sh/@thatopen/fragments@2.1.0"
             }
         }
     </script>
 </head>
 <body>
     <div id="loading">
-        <span id="loading-text">1. Carregando Motor BIM Oficial...</span>
+        <span id="loading-text">1. Carregando Bibliotecas...</span>
         <div class="spinner" id="spinner"></div>
     </div>
-    
     <div id="container"></div>
 
     <script type="module">
@@ -52,67 +45,60 @@
         import * as OBC from '@thatopen/components';
 
         const loadingText = document.getElementById('loading-text');
-        const spinner = document.getElementById('spinner');
 
         async function iniciarAplicacao() {
             try {
-                loadingText.innerText = "2. Configurando Mundo 3D...";
                 const container = document.getElementById('container');
                 const components = new OBC.Components();
+
+                // 1. CONFIGURAR O MUNDO
                 const worlds = components.get(OBC.Worlds);
-                
                 const world = worlds.create();
                 world.scene = new OBC.SimpleScene(components);
                 world.scene.setup(); 
                 world.scene.three.background = new THREE.Color('#cbd5e1');
-
                 world.renderer = new OBC.SimpleRenderer(components, container);
                 world.camera = new OBC.SimpleCamera(components);
-                world.camera.controls.setLookAt(15, 15, 15, 0, 0, 0);
-
-                // Inicializamos a base primeiro
+                
+                // 2. INICIALIZAR FRAGMENTOS PRIMEIRO (Resolve o erro "initialize fragments first")
+                loadingText.innerText = "2. Inicializando Geometria...";
+                const fragments = components.get(OBC.FragmentsManager);
+                
+                // 3. LIGAR O SISTEMA
                 components.init();
 
-                // Como não há mais "módulos duplicados", ao chamar os Fragmentos aqui, 
-                // o sistema reconhece a mesma cópia perfeitamente!
-                const fragments = components.get(OBC.FragmentsManager);
+                // 4. CONFIGURAR O CARREGADOR DE IFC
+                loadingText.innerText = "3. Preparando Tradutor IFC...";
                 const ifcLoader = components.get(OBC.IfcLoader);
-
-                loadingText.innerText = "3. Preparando Leitor IFC (WASM)...";
-                await ifcLoader.setup(); 
+                await ifcLoader.setup();
                 
-                // Apontamos para o diretório exato dos binários de engenharia
+                // Versão exata do WASM compatível com web-ifc 0.0.66
                 ifcLoader.settings.wasm = {
-                    path: "https://cdn.jsdelivr.net/npm/web-ifc@0.0.58/",
+                    path: "https://unpkg.com/web-ifc@0.0.66/",
                     absolute: true
                 };
 
-                // LENDO O SEU ARQUIVO IFC
-                const fileName = "./meu_projeto.ifc"; // <-- NOME DO SEU ARQUIVO AQUI
-
-                loadingText.innerText = `4. Baixando o arquivo ${fileName}...`;
-                const response = await fetch(fileName + "?v=" + Date.now());
+                // 5. CARREGAR O ARQUIVO
+                const fileName = "./meu_projeto.ifc"; // Verifique se o nome está correto no GitHub
+                loadingText.innerText = `4. Baixando arquivo ${fileName}...`;
                 
-                if (!response.ok) {
-                    throw new Error(`Arquivo IFC não encontrado! Erro HTTP: ${response.status}.`);
-                }
+                const response = await fetch(fileName + "?v=" + Date.now());
+                if (!response.ok) throw new Error("Arquivo IFC não encontrado no GitHub.");
                 
                 const data = await response.arrayBuffer();
                 const buffer = new Uint8Array(data);
 
-                loadingText.innerText = "5. Renderizando Geometria na Tela...";
+                loadingText.innerText = "5. Renderizando Modelo...";
                 const model = await ifcLoader.load(buffer);
                 world.scene.three.add(model);
 
-                // Centraliza a câmera no projeto
+                // Centraliza o modelo
                 world.camera.controls.fitToSphere(model, true);
-
-                // Oculta a tela de carregamento
                 document.getElementById('loading').style.display = 'none';
 
             } catch (error) {
-                console.error("Erro fatal capturado:", error);
-                spinner.style.display = 'none';
+                console.error("Erro capturado:", error);
+                document.getElementById('spinner').style.display = 'none';
                 loadingText.innerText = `⚠️ Erro: ${error.message}`;
                 loadingText.style.color = "#ff4757";
             }
