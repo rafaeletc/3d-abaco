@@ -4,6 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Visualizador BIM (That Open) - GitHub Pages</title>
+    
+    <!-- Isso remove o erro chato do /favicon.ico (404) -->
+    <link rel="icon" href="data:,">
+
     <style>
         body { margin: 0; overflow: hidden; background-color: #1e1e1e; font-family: sans-serif; }
         #container { width: 100vw; height: 100vh; display: block; }
@@ -21,21 +25,21 @@
         @keyframes spin { to { transform: rotate(360deg); } }
     </style>
     
-    <!-- IMPORTMAP ROBUSTO PARA GITHUB PAGES (usando jsDelivr + esm) -->
+    <!-- IMPORTMAP ATUALIZADO USANDO ESM.SH (Garante compatibilidade de módulos complexos) -->
     <script type="importmap">
         {
             "imports": {
-                "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-                "@thatopen/components": "https://cdn.jsdelivr.net/npm/@thatopen/components@1.4.1/+esm",
-                "@thatopen/fragments": "https://cdn.jsdelivr.net/npm/@thatopen/fragments@1.4.1/+esm",
-                "web-ifc": "https://cdn.jsdelivr.net/npm/web-ifc@0.0.58/+esm"
+                "three": "https://esm.sh/three@0.160.0",
+                "@thatopen/components": "https://esm.sh/@thatopen/components@1.4.1?external=three",
+                "@thatopen/fragments": "https://esm.sh/@thatopen/fragments@1.4.1?external=three",
+                "web-ifc": "https://esm.sh/web-ifc@0.0.58"
             }
         }
     </script>
 </head>
 <body>
     <div id="loading">
-        <span id="loading-text">Iniciando Motor BIM...</span>
+        <span id="loading-text">1. Iniciando Motor BIM...</span>
         <div class="spinner" id="spinner"></div>
     </div>
     
@@ -46,9 +50,10 @@
         import * as OBC from '@thatopen/components';
 
         const loadingText = document.getElementById('loading-text');
+        const spinner = document.getElementById('spinner');
 
         // 1. INICIALIZA O MOTOR THAT OPEN
-        loadingText.innerText = "Configurando Cena 3D...";
+        loadingText.innerText = "2. Configurando Cena 3D...";
         const container = document.getElementById('container');
         const components = new OBC.Components();
         const worlds = components.get(OBC.Worlds);
@@ -65,36 +70,33 @@
         components.init();
 
         // 2. CONFIGURA O TRADUTOR DE ENGENHARIA (WASM)
-        loadingText.innerText = "Carregando Tradutor IFC (WASM)...";
+        loadingText.innerText = "3. Carregando Tradutor IFC (WASM)...";
         const ifcLoader = components.get(OBC.IfcLoader);
         await ifcLoader.setup(); 
         
-        // Apontamos para o diretório de arquivos brutos do jsDelivr
+        // Mantemos o web-ifc no unpkg porque precisamos dos arquivos binários puros (.wasm)
         ifcLoader.settings.wasm = {
-            path: "https://cdn.jsdelivr.net/npm/web-ifc@0.0.58/",
+            path: "https://unpkg.com/web-ifc@0.0.58/",
             absolute: true
         };
 
-        // 3. LENDO O SEU ARQUIVO
-        // IMPORTANTE: Use "./" no começo para forçar o GitHub a procurar na mesma pasta
-        const fileName = "./meu_projeto.ifc"; 
+        // 3. LENDO O SEU ARQUIVO IFC
+        const fileName = "./meu_projeto.ifc"; // <-- NOME DO SEU ARQUIVO AQUI
 
         async function carregarModeloIFC() {
             try {
-                loadingText.innerText = `Baixando o arquivo ${fileName}...`;
+                loadingText.innerText = `4. Baixando o arquivo ${fileName}...`;
                 
-                // Puxa o arquivo do seu repositório do GitHub
                 const response = await fetch(fileName);
                 
-                // Se o GitHub não encontrar o arquivo, ele avisa aqui
                 if (!response.ok) {
-                    throw new Error(`Arquivo não encontrado! (Erro HTTP: ${response.status}). Verifique o nome do arquivo.`);
+                    throw new Error(`Arquivo IFC não encontrado (Erro HTTP: ${response.status}).`);
                 }
                 
                 const data = await response.arrayBuffer();
                 const buffer = new Uint8Array(data);
 
-                loadingText.innerText = "Processando Geometria...";
+                loadingText.innerText = "5. Processando Geometria...";
                 
                 // Converte e joga na tela
                 const model = await ifcLoader.load(buffer);
@@ -105,7 +107,7 @@
 
             } catch (error) {
                 console.error(error);
-                document.getElementById('spinner').style.display = 'none';
+                spinner.style.display = 'none';
                 loadingText.innerText = `⚠️ Erro: ${error.message}`;
                 loadingText.style.color = "#ff4757";
             }
