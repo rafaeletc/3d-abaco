@@ -2,24 +2,25 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <title>Visualizador BIM (IFC)</title>
+    <title>Visualizador BIM (IFC) - Corrigido</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #1e1e1e; font-family: sans-serif;}
         canvas { display: block; }
         #loading { position: absolute; top: 50%; width: 100%; text-align: center; color: white; font-size: 20px;}
     </style>
     
+    <!-- TROCAMOS DE UNPKG PARA JSDELIVR (Mais seguro contra erros de MIME Type) -->
     <script type="importmap">
         {
             "imports": {
-                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+                "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
             }
         }
     </script>
 </head>
 <body>
-    <div id="loading">Carregando Modelo IFC (BIM)...</div>
+    <div id="loading">Carregando Cena 3D...</div>
 
     <script type="module">
         import * as THREE from 'three';
@@ -28,7 +29,6 @@
         // Importando o Carregador de IFC
         import { IFCLoader } from 'three/addons/loaders/IFCLoader.js';
 
-        // 1. CENA BÁSICA
         const scene = new THREE.Scene();
         scene.background = new THREE.Color('#cbd5e1');
 
@@ -42,52 +42,43 @@
         const orbit = new OrbitControls(camera, renderer.domElement);
         orbit.enableDamping = true;
 
-        // Iluminação (Projetos IFC costumam ser grandes, precisam de boa luz)
         scene.add(new THREE.AmbientLight(0xffffff, 0.7));
         const dirLight = new THREE.DirectionalLight(0xffffff, 1);
         dirLight.position.set(10, 20, 10);
         scene.add(dirLight);
 
-        // 2. CONFIGURANDO O CARREGADOR DE IFC
+        // -------------------------------------------------------------
+        // CONFIGURAÇÃO DO IFCLOADER COM O NOVO SERVIDOR (JSDELIVR)
+        // -------------------------------------------------------------
         const ifcLoader = new IFCLoader();
         
-        // PASSO CRUCIAL: O IFC precisa de um tradutor (WebAssembly). 
-        // Apontamos para o servidor oficial que hospeda esses tradutores:
-        ifcLoader.ifcManager.setWasmPath('https://unpkg.com/web-ifc@0.0.50/');
+        // Os arquivos WASM são o "motor" que traduz o IFC. 
+        ifcLoader.ifcManager.setWasmPath('https://cdn.jsdelivr.net/npm/web-ifc@0.0.50/');
 
-        // 3. CARREGANDO O ARQUIVO
-        // Substitua 'meu_projeto.ifc' pelo caminho do seu arquivo real
+        // Tenta carregar o seu arquivo. 
+        // IMPORTANTE: O arquivo .ifc deve estar na mesma pasta do seu index.html
         ifcLoader.load(
-            'meu_projeto.ifc', 
+            'meu_projeto.ifc', // <--- COLOQUE O NOME DO SEU ARQUIVO AQUI
             function (ifcModel) {
-                // Quando terminar de carregar
                 document.getElementById('loading').style.display = 'none';
-                
-                // Adiciona o projeto IFC inteiro na cena
                 scene.add(ifcModel);
-
-                // Centraliza a câmera no modelo (opcional, mas ajuda muito)
-                // ifcModel.position.set(0,0,0);
             },
             function (progress) {
-                // Mostra a porcentagem de carregamento (IFCs podem ser pesados)
                 const percentual = (progress.loaded / progress.total) * 100;
                 document.getElementById('loading').innerText = `Carregando: ${Math.round(percentual)}%`;
             },
             function (error) {
                 console.error("Erro ao carregar o IFC:", error);
-                document.getElementById('loading').innerText = "Erro ao carregar o arquivo.";
+                document.getElementById('loading').innerText = "Erro ao carregar. Verifique o console ou o nome do arquivo.";
             }
         );
 
-        // RESPONSIVIDADE
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
         });
 
-        // LOOP DE ANIMAÇÃO
         function animar() {
             requestAnimationFrame(animar);
             orbit.update();
