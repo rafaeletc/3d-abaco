@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Visualizador BIM (That Open) - 100% Funcional</title>
+    <title>Visualizador BIM (That Open) - Funcional</title>
     
     <link rel="icon" href="data:,">
 
@@ -24,13 +24,16 @@
         @keyframes spin { to { transform: rotate(360deg); } }
     </style>
     
+    <!-- IMPORTMAP CELESTIAL: 
+         1. Bloqueamos o esm.sh de mexer no web-ifc (external=web-ifc).
+         2. Puxamos o web-ifc puro do jsDelivr para não quebrar o C++. -->
     <script type="importmap">
         {
             "imports": {
                 "three": "https://esm.sh/three",
-                "@thatopen/components": "https://esm.sh/@thatopen/components?external=three",
-                "@thatopen/fragments": "https://esm.sh/@thatopen/fragments?external=three",
-                "web-ifc": "https://esm.sh/web-ifc@0.0.70"
+                "web-ifc": "https://cdn.jsdelivr.net/npm/web-ifc@0.0.70/+esm",
+                "@thatopen/components": "https://esm.sh/@thatopen/components?external=three,web-ifc,@thatopen/fragments",
+                "@thatopen/fragments": "https://esm.sh/@thatopen/fragments?external=three,web-ifc"
             }
         }
     </script>
@@ -66,26 +69,17 @@
                 world.camera = new OBC.SimpleCamera(components);
                 world.camera.controls.setLookAt(15, 15, 15, 0, 0, 0);
 
+                // =========================================================
+                // O SEGREDO ESTÁ AQUI: REGISTRAR AS FERRAMENTAS ANTES DO INIT!
+                // =========================================================
+                const fragments = components.get(OBC.FragmentsManager);
+                const ifcLoader = components.get(OBC.IfcLoader);
+
+                // Agora sim, damos a ignição. Como as ferramentas foram registradas acima, 
+                // o sistema liga todas elas perfeitamente, sem o erro de "initialize fragments first".
                 components.init();
 
-                // ==============================================================
-                // PASSO NOVO E OBRIGATÓRIO: Inicializando o Motor de Geometria (Web Worker)
-                // ==============================================================
-                loadingText.innerText = "3. Inicializando Motor de Fragmentos (Worker)...";
-                const fragments = components.get(OBC.FragmentsManager);
-                
-                // Baixamos o processador assíncrono oficial e transformamos em um link local
-                const workerRequest = await fetch("https://thatopen.github.io/engine_fragment/resources/worker.mjs");
-                const workerBlob = await workerRequest.blob();
-                const workerUrl = URL.createObjectURL(workerBlob);
-                
-                // Agora inicializamos os fragmentos com o "trabalhador" configurado
-                fragments.init(workerUrl);
-
-                // ==============================================================
-
-                loadingText.innerText = "4. Carregando Tradutor IFC (WASM)...";
-                const ifcLoader = components.get(OBC.IfcLoader);
+                loadingText.innerText = "3. Carregando Tradutor IFC (WASM)...";
                 await ifcLoader.setup(); 
                 
                 ifcLoader.settings.wasm = {
@@ -96,9 +90,10 @@
                 // LENDO O SEU ARQUIVO IFC
                 const fileName = "./meu_projeto.ifc"; // <-- SEU ARQUIVO AQUI
 
-                loadingText.innerText = `5. Baixando o arquivo ${fileName}...`;
+                loadingText.innerText = `4. Baixando o arquivo ${fileName}...`;
                 
-                const response = await fetch(fileName + "?v=" + new Date().getTime());
+                // O Date.now() impede o GitHub de usar uma versão velha da memória cache
+                const response = await fetch(fileName + "?v=" + Date.now());
                 
                 if (!response.ok) {
                     throw new Error(`Arquivo IFC não encontrado! Erro ${response.status}. Verifique o nome do arquivo.`);
@@ -107,15 +102,16 @@
                 const data = await response.arrayBuffer();
                 const buffer = new Uint8Array(data);
 
-                loadingText.innerText = "6. Convertendo e Renderizando Geometria...";
+                loadingText.innerText = "5. Convertendo Engenharia para Geometria...";
                 
+                // Como não "quebramos" o código C++ do web-ifc, isso vai rodar liso
                 const model = await ifcLoader.load(buffer);
                 world.scene.three.add(model);
 
-                // Faz a câmera voar até o modelo suavemente
+                // Faz a câmera viajar até o prédio e centralizá-lo
                 world.camera.controls.fitToSphere(model, true);
 
-                // Esconde o carregamento e libera a interação!
+                // Esconde a tela de carregamento
                 document.getElementById('loading').style.display = 'none';
 
             } catch (error) {
