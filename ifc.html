@@ -24,7 +24,6 @@
         @keyframes spin { to { transform: rotate(360deg); } }
     </style>
     
-    <!-- IMPORTMAP CORRIGIDO: O "three" agora está sem a trava de versão (@0.160.0) -->
     <script type="importmap">
         {
             "imports": {
@@ -45,7 +44,6 @@
     <div id="container"></div>
 
     <script type="module">
-        // Agora o navegador vai baixar o Three.js mais recente
         import * as THREE from 'three';
         import * as OBC from '@thatopen/components';
 
@@ -54,7 +52,6 @@
 
         async function iniciarAplicacao() {
             try {
-                // 1. INICIALIZA O MOTOR THAT OPEN
                 loadingText.innerText = "2. Configurando Cena 3D...";
                 const container = document.getElementById('container');
                 const components = new OBC.Components();
@@ -69,11 +66,17 @@
                 world.camera = new OBC.SimpleCamera(components);
                 world.camera.controls.setLookAt(15, 15, 15, 0, 0, 0);
 
+                // ==========================================
+                // A CORREÇÃO ESTÁ AQUI:
+                // Puxamos os Gerenciadores de Geometria ANTES do "init()"
+                // ==========================================
+                const fragments = components.get(OBC.FragmentsManager);
+                const ifcLoader = components.get(OBC.IfcLoader);
+
+                // Agora sim! O comando abaixo vai ligar a câmera, o mundo e os FRAGMENTOS!
                 components.init();
 
-                // 2. CONFIGURA O TRADUTOR DE ENGENHARIA (WASM)
                 loadingText.innerText = "3. Carregando Tradutor IFC (WASM)...";
-                const ifcLoader = components.get(OBC.IfcLoader);
                 await ifcLoader.setup(); 
                 
                 ifcLoader.settings.wasm = {
@@ -81,12 +84,12 @@
                     absolute: true
                 };
 
-                // 3. LENDO O SEU ARQUIVO IFC
+                // LENDO O SEU ARQUIVO IFC
                 const fileName = "./meu_projeto.ifc"; // <-- SEU ARQUIVO AQUI
 
                 loadingText.innerText = `4. Baixando o arquivo ${fileName}...`;
                 
-                // Quebrador de cache local para garantir que ele leia o IFC novo
+                // Força o navegador a buscar o arquivo novo ignorando o cache
                 const response = await fetch(fileName + "?v=" + new Date().getTime());
                 
                 if (!response.ok) {
@@ -96,12 +99,12 @@
                 const data = await response.arrayBuffer();
                 const buffer = new Uint8Array(data);
 
-                loadingText.innerText = "5. Processando Geometria de Alta Performance...";
+                loadingText.innerText = "5. Renderizando Geometria de Alta Performance...";
                 
                 const model = await ifcLoader.load(buffer);
                 world.scene.three.add(model);
 
-                // Centraliza e aproxima a câmera do modelo automaticamente
+                // Faz a câmera voar até o modelo e centralizar a tela
                 world.camera.controls.fitToSphere(model, true);
 
                 // Esconde a tela de carregamento
