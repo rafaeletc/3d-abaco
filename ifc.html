@@ -37,7 +37,7 @@
 </head>
 <body>
     <div id="loading">
-        <span id="loading-text">1. Iniciando Motor BIM Atualizado...</span>
+        <span id="loading-text">1. Iniciando Motor BIM...</span>
         <div class="spinner" id="spinner"></div>
     </div>
     
@@ -66,17 +66,26 @@
                 world.camera = new OBC.SimpleCamera(components);
                 world.camera.controls.setLookAt(15, 15, 15, 0, 0, 0);
 
-                // ==========================================
-                // A CORREÇÃO ESTÁ AQUI:
-                // Puxamos os Gerenciadores de Geometria ANTES do "init()"
-                // ==========================================
-                const fragments = components.get(OBC.FragmentsManager);
-                const ifcLoader = components.get(OBC.IfcLoader);
-
-                // Agora sim! O comando abaixo vai ligar a câmera, o mundo e os FRAGMENTOS!
                 components.init();
 
-                loadingText.innerText = "3. Carregando Tradutor IFC (WASM)...";
+                // ==============================================================
+                // PASSO NOVO E OBRIGATÓRIO: Inicializando o Motor de Geometria (Web Worker)
+                // ==============================================================
+                loadingText.innerText = "3. Inicializando Motor de Fragmentos (Worker)...";
+                const fragments = components.get(OBC.FragmentsManager);
+                
+                // Baixamos o processador assíncrono oficial e transformamos em um link local
+                const workerRequest = await fetch("https://thatopen.github.io/engine_fragment/resources/worker.mjs");
+                const workerBlob = await workerRequest.blob();
+                const workerUrl = URL.createObjectURL(workerBlob);
+                
+                // Agora inicializamos os fragmentos com o "trabalhador" configurado
+                fragments.init(workerUrl);
+
+                // ==============================================================
+
+                loadingText.innerText = "4. Carregando Tradutor IFC (WASM)...";
+                const ifcLoader = components.get(OBC.IfcLoader);
                 await ifcLoader.setup(); 
                 
                 ifcLoader.settings.wasm = {
@@ -87,27 +96,26 @@
                 // LENDO O SEU ARQUIVO IFC
                 const fileName = "./meu_projeto.ifc"; // <-- SEU ARQUIVO AQUI
 
-                loadingText.innerText = `4. Baixando o arquivo ${fileName}...`;
+                loadingText.innerText = `5. Baixando o arquivo ${fileName}...`;
                 
-                // Força o navegador a buscar o arquivo novo ignorando o cache
                 const response = await fetch(fileName + "?v=" + new Date().getTime());
                 
                 if (!response.ok) {
-                    throw new Error(`Arquivo IFC não encontrado! Erro ${response.status}. Verifique o nome do arquivo no repositório.`);
+                    throw new Error(`Arquivo IFC não encontrado! Erro ${response.status}. Verifique o nome do arquivo.`);
                 }
                 
                 const data = await response.arrayBuffer();
                 const buffer = new Uint8Array(data);
 
-                loadingText.innerText = "5. Renderizando Geometria de Alta Performance...";
+                loadingText.innerText = "6. Convertendo e Renderizando Geometria...";
                 
                 const model = await ifcLoader.load(buffer);
                 world.scene.three.add(model);
 
-                // Faz a câmera voar até o modelo e centralizar a tela
+                // Faz a câmera voar até o modelo suavemente
                 world.camera.controls.fitToSphere(model, true);
 
-                // Esconde a tela de carregamento
+                // Esconde o carregamento e libera a interação!
                 document.getElementById('loading').style.display = 'none';
 
             } catch (error) {
