@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Visualizador BIM Paramétrico</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #1e1e1e; font-family: sans-serif; }
+        #container { width: 100vw; height: 100vh; }
+        #loading { position: absolute; top: 50%; width: 100%; text-align: center; color: white; pointer-events: none; }
+    </style>
+    
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://esm.sh/three@0.160.1",
+                "@thatopen/components": "https://esm.sh/@thatopen/components@2.1.0",
+                "@thatopen/fragments": "https://esm.sh/@thatopen/fragments@2.1.0",
+                "web-ifc": "https://esm.sh/web-ifc@0.0.66",
+                "lil-gui": "https://esm.sh/lil-gui"
+            }
+        }
+    </script>
+</head>
+<body>
+    <div id="loading">Carregando Projeto e Motor Paramétrico...</div>
+    <div id="container"></div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import * as OBC from '@thatopen/components';
+        import { GUI } from 'lil-gui';
+
+        // 1. SETUP DO MOTOR THAT OPEN (Seu código base que funcionou)
+        const container = document.getElementById('container');
+        const components = new OBC.Components();
+        const worlds = components.get(OBC.Worlds);
+        const world = worlds.create();
+        
+        world.scene = new OBC.SimpleScene(components);
+        world.scene.setup();
+        world.scene.three.background = new THREE.Color('#cbd5e1');
+        
+        world.renderer = new OBC.SimpleRenderer(components, container);
+        world.camera = new OBC.SimpleCamera(components);
+        
+        const fragments = components.get(OBC.FragmentsManager);
+        const ifcLoader = components.get(OBC.IfcLoader);
+        components.init();
+
+        // Configuração do Tradutor IFC
+        await ifcLoader.setup();
+        ifcLoader.settings.wasm = {
+            path: "https://unpkg.com/web-ifc@0.0.66/",
+            absolute: true
+        };
+
+        // 2. CARREGAR O IFC (O CONTEXTO ESTÁTICO)
+        async function carregarIFC() {
+            const fileName = "./meu_projeto.ifc"; // Seu arquivo IFC aqui
+            try {
+                const response = await fetch(fileName);
+                const data = await response.arrayBuffer();
+                const model = await ifcLoader.load(new Uint8Array(data));
+                world.scene.three.add(model);
+                world.camera.controls.fitToSphere(model, true);
+                document.getElementById('loading').style.display = 'none';
+            } catch (e) {
+                console.log("Aviso: IFC não encontrado, rodando apenas modo paramétrico.");
+                document.getElementById('loading').style.display = 'none';
+            }
+        }
+        carregarIFC();
+
+        // 3. O BOX PARAMÉTRICO (A CONSTRUÇÃO EDITÁVEL)
+        // Criamos os objetos que podem ser redimensionados sem distorção
+        const config = { largura: 2.0, profundidade: 2.0, altura: 2.2 };
+        const espessura = 0.05; // Vidro ou Parede fina
+        const dimPorta = { w: 0.8, h: 2.1 }; // Tamanho fixo da porta
+
+        const matVidro = new THREE.MeshStandardMaterial({ color: '#88ccff', transparent: true, opacity: 0.4 });
+        const matPorta = new THREE.MeshStandardMaterial({ color: '#ffffff', metalness: 0.5, roughness: 0.2 });
+
+        const grupoParametrico = new THREE.Group();
+        world.scene.three.add(grupoParametrico);
+
+        // Peças do Box
+        const geoBase = new THREE.BoxGeometry(1, 1, 1);
+        const vidroFixo = new THREE.Mesh(geoBase, matVidro);
+        const porta = new THREE.Mesh(geoBase, matPorta);
+        const trilhoSuperior = new THREE.Mesh(geoBase, new THREE.MeshStandardMaterial({color: '#ccc'}));
+
+        grupoParametrico.add(vidroFixo, porta, trilhoSuperior);
+
+        function atualizarParametros() {
+            // Lógica de "Não distorção":
+            // A largura total é 'largura'. A porta tem '0.8'. O vidro fixo ocupa o resto.
+            
+            // 1. Vidro Fixo (Ajusta o tamanho para preencher o que sobra)
+            const larguraVidroFixo = config.largura - dimPorta.w;
+            vidroFixo.scale.set(larguraVidroFixo, config.altura, espessura);
+            vidroFixo.position.set(-config.largura/2 + larguraVidroFixo/2, config.altura/2, 0);
+
+            // 2. Porta (MANTÉM O TAMANHO FIXO DE 0.8m)
+            // Ela apenas viaja no eixo X para acompanhar o crescimento da largura
+            porta.scale.set(dimPorta.w, dimPorta.h, espessura);
+            porta.position.set(config.largura/2 - dimPorta.w/2, dimPorta.h/2, 0.02);
+
+            // 3. Trilho (Estica para cobrir tudo)
+            trilhoSuperior.scale.set(config.largura, 0.05, 0.05);
+            trilhoSuperior.position.set(0, config.altura, 0);
+        }
+
+        // 4. INTERFACE (GUI)
+        const gui = new GUI({ title: "Configurador de Box" });
+        gui.add(config, 'largura', 1.0, 4.0).name("Largura Total").onChange(atualizarParametros);
+        gui.add(config, 'altura', 1.5, 3.0).name("Altura Box").onChange(atualizarParametros);
+        
+        atualizarParametros();
+
+    </script>
+</body>
+</html>
