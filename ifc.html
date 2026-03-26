@@ -3,9 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Visualizador BIM (That Open) - Resolvido</title>
+    <title>Visualizador BIM (That Open) - 100% Funcional</title>
     
-    <!-- Evita o erro inofensivo mas chato do favicon.ico -->
     <link rel="icon" href="data:,">
 
     <style>
@@ -25,11 +24,11 @@
         @keyframes spin { to { transform: rotate(360deg); } }
     </style>
     
-    <!-- IMPORTMAP LIMPO: Sem travar versões inexistentes -->
+    <!-- IMPORTMAP CORRIGIDO: O "three" agora está sem a trava de versão (@0.160.0) -->
     <script type="importmap">
         {
             "imports": {
-                "three": "https://esm.sh/three@0.160.0",
+                "three": "https://esm.sh/three",
                 "@thatopen/components": "https://esm.sh/@thatopen/components?external=three",
                 "@thatopen/fragments": "https://esm.sh/@thatopen/fragments?external=three",
                 "web-ifc": "https://esm.sh/web-ifc@0.0.70"
@@ -39,20 +38,20 @@
 </head>
 <body>
     <div id="loading">
-        <span id="loading-text">1. Iniciando Motor BIM (Carregando Módulos)...</span>
+        <span id="loading-text">1. Iniciando Motor BIM Atualizado...</span>
         <div class="spinner" id="spinner"></div>
     </div>
     
     <div id="container"></div>
 
     <script type="module">
+        // Agora o navegador vai baixar o Three.js mais recente
         import * as THREE from 'three';
         import * as OBC from '@thatopen/components';
 
         const loadingText = document.getElementById('loading-text');
         const spinner = document.getElementById('spinner');
 
-        // Envolvemos tudo numa função async para garantir o carregamento sequencial perfeito
         async function iniciarAplicacao() {
             try {
                 // 1. INICIALIZA O MOTOR THAT OPEN
@@ -77,18 +76,18 @@
                 const ifcLoader = components.get(OBC.IfcLoader);
                 await ifcLoader.setup(); 
                 
-                // IMPORTANTE: A versão do unpkg (0.0.70) DEVE ser igual a que está lá em cima no importmap
                 ifcLoader.settings.wasm = {
                     path: "https://unpkg.com/web-ifc@0.0.70/",
                     absolute: true
                 };
 
                 // 3. LENDO O SEU ARQUIVO IFC
-                const fileName = "./meu_projeto.ifc"; // <-- SEU ARQUIVO AQUI (Cuidado com Letras Maiúsculas/Minúsculas)
+                const fileName = "./meu_projeto.ifc"; // <-- SEU ARQUIVO AQUI
 
                 loadingText.innerText = `4. Baixando o arquivo ${fileName}...`;
                 
-                const response = await fetch(fileName);
+                // Quebrador de cache local para garantir que ele leia o IFC novo
+                const response = await fetch(fileName + "?v=" + new Date().getTime());
                 
                 if (!response.ok) {
                     throw new Error(`Arquivo IFC não encontrado! Erro ${response.status}. Verifique o nome do arquivo no repositório.`);
@@ -99,11 +98,13 @@
 
                 loadingText.innerText = "5. Processando Geometria de Alta Performance...";
                 
-                // Converte e joga na tela
                 const model = await ifcLoader.load(buffer);
                 world.scene.three.add(model);
 
-                // Sucesso! Esconde a tela de carregamento
+                // Centraliza e aproxima a câmera do modelo automaticamente
+                world.camera.controls.fitToSphere(model, true);
+
+                // Esconde a tela de carregamento
                 document.getElementById('loading').style.display = 'none';
 
             } catch (error) {
@@ -114,7 +115,6 @@
             }
         }
 
-        // Executa o motor
         iniciarAplicacao();
     </script>
 </body>
